@@ -27,14 +27,24 @@ function Y = complete_rdm(X, verbose)
     if nargin < 2
         verbose = false;
     end
-    assert(all(sum(~isnan(X))>1),'Cannot reconstruct when a full row is missing')
+    X(eye(size(X))==1) = 0; %zero on diag
     Y = X;
+    prev_missing = Inf;
     while 1
-        [missing_i, missing_j] = find(isnan(triu(Y,1)));
+        [missing_i, missing_j] = find(isnan(Y));
         nmissing = numel(missing_i);
-        if ~nmissing % keep going until all missing entries are filled
+        if verbose
+            fprintf('Reconstructing %i missing entries\n', ...
+                    nmissing);
+        end
+        % keep going until all missing entries are filled
+        if nmissing == 0 || nmissing >= prev_missing
+            if verbose && nmissing > 0
+                fprintf('No progress in reducing missing entries; stopping.\n');
+            end
             return
         end
+        prev_missing = nmissing;
         for n = 1:nmissing
             i = missing_i(n);
             j = missing_j(n);
@@ -46,8 +56,8 @@ function Y = complete_rdm(X, verbose)
                 a = ai(known);
                 b = bj(known);
                 % we estimate the missing distance using Pythagorean theorem, 
-                % either as the square root of the sum of squares 
-                % or the difference of squares of these known distances
+                % either as the square root of the sum of squares (right angle)
+                % or the difference of squares of the known distances ()
                 d1 = sqrt(a.^2 + b.^2);
                 d2 = sqrt(abs(a.^2 - b.^2));
                 % we take the median of all estimates
@@ -58,11 +68,6 @@ function Y = complete_rdm(X, verbose)
                 if verbose
                     fprintf('%i/%i Estimated (%d,%d) and (%d,%d) with %.4f using %d references\n', ...
                             n, nmissing, i, j, j, i, d_est, numel(a));
-                end
-            else
-                if verbose
-                    fprintf('%i/%i (%d,%d) and (%d,%d) skipping: no references\n', ...
-                            n, nmissing, i, j, j, i);
                 end
             end
         end

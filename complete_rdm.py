@@ -20,21 +20,33 @@ def complete_rdm(X, verbose=False):
 
     Returns:
     Y : np.ndarray
-        Completed symmetric distance matrix with all entries filled.
+        Completed symmetric distance matrix with all entries filled (if the input has no isolated clusters)
     """
     X = np.array(X, dtype=np.float64)
-    if np.any(np.sum(~np.isnan(X), axis=1) <= 1):
-        raise ValueError("Cannot reconstruct when a full row is missing")
-
+    np.fill_diagonal(X, 0)  # Set diagonal to zero
     Y = X.copy()
-    while True:
-        # find missing entries in the upper triangle
-        missing_indices = np.argwhere(np.triu(np.isnan(Y), 1))
-        nmissing = len(missing_indices)
-        if nmissing == 0:
-            return Y  # all missing entries are filled
 
-        for n, (i, j) in enumerate(missing_indices, start=1):
+    prev_missing = np.inf
+
+    while True:
+        missing_i, missing_j = np.where(np.triu(np.isnan(Y),1))
+        nmissing = len(missing_i)
+
+        if verbose:
+            print(f"Reconstructing {nmissing} missing entries")
+
+        # keep going until all missing entries are filled
+        if nmissing == 0 or nmissing >= prev_missing:
+            if verbose and nmissing > 0:
+                print("No progress in reducing missing entries; stopping.")
+            return Y
+
+        prev_missing = nmissing
+
+        for n in range(nmissing):
+            i = missing_i[n]
+            j = missing_j[n]
+
             ai = Y[i, :]
             bj = Y[j, :]
 
@@ -44,13 +56,12 @@ def complete_rdm(X, verbose=False):
                 a = ai[known]
                 b = bj[known]
 
-                # estimate the missing distance using Pythagorean theorem,
-                # either as the square root of the sum of squares
-                # or the difference of squares of these known distances
+                # we estimate the missing distance using Pythagorean theorem, 
+                # either as the square root of the sum of squares (right angle)
+                # or the difference of squares of the known distances
                 d1 = np.sqrt(a**2 + b**2)
                 d2 = np.sqrt(np.abs(a**2 - b**2))
-
-                # take the median of all estimates
+                # we take the median of all estimates
                 d_est = np.median(np.concatenate([d1, d2]))
 
                 # assign estimate to matrix
@@ -58,10 +69,8 @@ def complete_rdm(X, verbose=False):
                 Y[j, i] = d_est
 
                 if verbose:
-                    print(f"{n}/{nmissing} Estimated ({i},{j}) and ({j},{i}) with {d_est:.4f} using {len(a)} references")
-            else:
-                if verbose:
-                    print(f"{n}/{nmissing} ({i},{j}) and ({j},{i}) skipping: no references")
+                    print(f"{n+1}/{nmissing} Estimated ({i},{j}) and ({j},{i}) with {d_est:.4f} using {len(a)} references")
+
 
 if __name__ == "__main__":
     # test case:
@@ -92,7 +101,7 @@ if __name__ == "__main__":
     Xt = pdist(points)  # True distances (condensed)
 
     r = []
-    for n in range(1, 91):  # 1% to 90% missing
+    for n in range(1, 81):  # 1% to 80% missing
         X = Xt.copy()
         n_missing = int(np.ceil(n * len(Xt) / 100))
         missing_idx = np.random.choice(len(X), n_missing, replace=False)
@@ -111,8 +120,9 @@ if __name__ == "__main__":
     plt.figure(figsize=(6, 4))
     plt.plot(r, marker='o')
     plt.xlabel('% Missing Values')
-    plt.ylabel('Reconstruction Correlation')
+    plt.ylabel('Reconstruction accuracy')
     plt.title('RDM Completion Accuracy vs Missing Data')
     plt.grid(True)
     plt.tight_layout()
+    plt.ylim(((0,1)))
     plt.show()
